@@ -165,6 +165,26 @@ func main() {
 		w.Write(b)
 	})
 
+	mux.HandleFunc("/hostname", func(w http.ResponseWriter, r *http.Request) {
+		name, err := os.Hostname()
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"error": err.Error(),
+			})
+			return
+		}
+
+		b, err := json.Marshal(responseSuccess{Data: name})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set(headerContentType, contentTypeJSON)
+		w.Write(b)
+	})
+
 	mux.HandleFunc("/time", func(w http.ResponseWriter, r *http.Request) {
 		b, err := json.Marshal(responseSuccess{Data: time.Now().Format(time.RFC3339)})
 		if err != nil {
