@@ -169,6 +169,16 @@ func main() {
 		w.Write(b)
 	})
 
+	http.HandleFunc("/livez", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ok"))
+	})
+
+	http.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ok"))
+	})
+
 	mux.HandleFunc("/counter", func(w http.ResponseWriter, r *http.Request) {
 		currCount := atomic.AddUint64(&counter, 1)
 		b, err := json.Marshal(responseSuccess{Data: strconv.FormatUint(currCount, 10)})
