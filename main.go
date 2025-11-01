@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/ming-go/lab/get-container-id/containerid"
+	"github.com/ming-go/lab/get-container-id/podid"
 )
 
 var replacer = strings.NewReplacer("\n", "")
@@ -105,7 +106,8 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 
-	sc := stringCache{}
+	containerCache := stringCache{}
+	podCache := stringCache{}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		reqBody := []byte{}
@@ -251,8 +253,44 @@ func main() {
 		w.Write(b)
 	})
 
+	mux.HandleFunc("/pod_id", func(w http.ResponseWriter, r *http.Request) {
+		pid, exists := podCache.Get()
+		if !exists {
+			var err error
+			pid, err = podid.Get()
+			if err != nil {
+				respErr := responseError{Errors: errs{Message: err.Error()}}
+				b, marshalErr := json.Marshal(respErr)
+				if marshalErr != nil {
+					http.Error(w, marshalErr.Error(), http.StatusInternalServerError)
+					return
+				}
+
+				w.Header().Set(headerContentType, contentTypeJSON)
+				status := http.StatusInternalServerError
+				if errors.Is(err, podid.ErrPodIDNotFound) {
+					status = http.StatusNotFound
+				}
+				w.WriteHeader(status)
+				w.Write(b)
+				return
+			}
+
+			podCache.Set(pid)
+		}
+
+		b, err := json.Marshal(responseSuccess{Data: pid})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set(headerContentType, contentTypeJSON)
+		w.Write(b)
+	})
+
 	mux.HandleFunc("/container_id", func(w http.ResponseWriter, r *http.Request) {
-		containerID, exists := sc.Get()
+		containerID, exists := containerCache.Get()
 		if !exists {
 			var err error
 			containerID, err = getConatinerID()
@@ -268,7 +306,7 @@ func main() {
 				return
 			}
 
-			sc.Set(containerID)
+			containerCache.Set(containerID)
 		}
 
 		b, err := json.Marshal(responseSuccess{Data: containerID})
