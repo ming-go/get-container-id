@@ -13,10 +13,10 @@ var (
 	// Matches: /containers/<containerID>/hostname, /sandboxes/<containerID>/resolv.conf, etc.
 	reGeneric = regexp.MustCompile(`/([0-9a-f]{64})/(?:hostname|hosts|resolv\.conf)`)
 
-	// Cache the container ID after first retrieval
-	cachedID   string
-	cacheOnce  sync.Once
-	cacheError error
+	// Cached container ID
+	cachedID string
+	hasID    bool
+	mu       sync.RWMutex
 )
 
 const (
@@ -30,10 +30,25 @@ const (
 // Get retrieves the full container ID from /proc/self/mountinfo.
 // The result is cached after the first successful call.
 func Get() (string, error) {
-	cacheOnce.Do(func() {
-		cachedID, cacheError = get()
-	})
-	return cachedID, cacheError
+	mu.RLock()
+	if hasID {
+		id := cachedID
+		mu.RUnlock()
+		return id, nil
+	}
+	mu.RUnlock()
+
+	id, err := get()
+	if err != nil {
+		return "", err
+	}
+
+	mu.Lock()
+	cachedID = id
+	hasID = true
+	mu.Unlock()
+
+	return id, nil
 }
 
 // GetShort returns the short version (12 characters) of the container ID.
@@ -59,6 +74,7 @@ func GetFromFile(path string) (string, error) {
 	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
 		line := scanner.Text()
 
