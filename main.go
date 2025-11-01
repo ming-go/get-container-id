@@ -83,6 +83,11 @@ type responseError struct {
 
 var httpPort = "8080"
 
+const (
+	headerContentType = "Content-Type"
+	contentTypeJSON   = "application/json"
+)
+
 func getRequestURL(r *http.Request) string {
 	scheme := "http://"
 	if r.TLS != nil {
@@ -130,7 +135,7 @@ func main() {
 			return
 		}
 
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set(headerContentType, contentTypeJSON)
 		w.Write(b)
 	})
 
@@ -143,29 +148,29 @@ func main() {
 			return
 		}
 
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set(headerContentType, contentTypeJSON)
 		w.Write(b)
 	})
 
-	mux.HandleFunc("/timeNowUnix", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/timestamp", func(w http.ResponseWriter, r *http.Request) {
 		b, err := json.Marshal(responseSuccess{Data: time.Now().Unix()})
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set(headerContentType, contentTypeJSON)
 		w.Write(b)
 	})
 
-	mux.HandleFunc("/timeNowUnixNano", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/timestamp_nano", func(w http.ResponseWriter, r *http.Request) {
 		b, err := json.Marshal(responseSuccess{Data: time.Now().UnixNano()})
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set(headerContentType, contentTypeJSON)
 		w.Write(b)
 	})
 
@@ -187,7 +192,7 @@ func main() {
 			return
 		}
 
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set(headerContentType, contentTypeJSON)
 		w.Write(b)
 	})
 
@@ -198,11 +203,11 @@ func main() {
 			return
 		}
 
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set(headerContentType, contentTypeJSON)
 		w.Write(b)
 	})
 
-	mux.HandleFunc("/containerID", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/container_id", func(w http.ResponseWriter, r *http.Request) {
 		containerID, exists := sc.Get()
 		if !exists {
 			var err error
@@ -214,7 +219,7 @@ func main() {
 					return
 				}
 
-				w.Header().Set("Content-Type", "application/json")
+				w.Header().Set(headerContentType, contentTypeJSON)
 				w.Write(b)
 				return
 			}
@@ -228,7 +233,7 @@ func main() {
 			return
 		}
 
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set(headerContentType, contentTypeJSON)
 		w.Write(b)
 	})
 
