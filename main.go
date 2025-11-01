@@ -136,6 +136,17 @@ func main() {
 
 	var counter uint64
 
+	mux.HandleFunc("/time", func(w http.ResponseWriter, r *http.Request) {
+		b, err := json.Marshal(responseSuccess{Data: time.Now().Format(time.RFC3339)})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(b)
+	})
+
 	mux.HandleFunc("/timeNowUnix", func(w http.ResponseWriter, r *http.Request) {
 		b, err := json.Marshal(responseSuccess{Data: time.Now().Unix()})
 		if err != nil {
