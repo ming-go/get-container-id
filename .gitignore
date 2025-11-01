@@ -36,3 +36,4 @@ go.work.sum
 # .vscode/
 
 /main
+/get-container-id
