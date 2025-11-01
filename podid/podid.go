@@ -29,10 +29,10 @@ var (
 	// Example: /pods/036da4f7-d553-4eb6-9802-90f81041a412/
 	podIDRegex = regexp.MustCompile(`/pods/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/`)
 
-	// Cache to store the Pod ID after first retrieval
-	cachedID  string
-	cacheErr  error
-	cacheOnce sync.Once
+	// Cache to store the Pod ID after first successful retrieval
+	cachedID string
+	hasID    bool
+	mu       sync.RWMutex
 
 	getPodIDFunc = getPodIDFromMountInfo
 )
@@ -42,10 +42,25 @@ var (
 //
 // Returns ErrPodIDNotFound if not running in a Kubernetes pod.
 func Get() (string, error) {
-	cacheOnce.Do(func() {
-		cachedID, cacheErr = getPodIDFromMountInfo()
-	})
-	return cachedID, cacheErr
+	mu.RLock()
+	if hasID {
+		id := cachedID
+		mu.RUnlock()
+		return id, nil
+	}
+	mu.RUnlock()
+
+	id, err := getPodIDFunc()
+	if err != nil {
+		return "", err
+	}
+
+	mu.Lock()
+	cachedID = id
+	hasID = true
+	mu.Unlock()
+
+	return id, nil
 }
 
 // GetFromFile retrieves the Pod ID from a specific mountinfo file path.
@@ -58,6 +73,7 @@ func GetFromFile(path string) (string, error) {
 	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
 		line := scanner.Text()
 
