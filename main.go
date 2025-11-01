@@ -13,7 +13,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -48,26 +47,6 @@ func getConatinerID() (string, error) {
 	}
 
 	return id, nil
-}
-
-type stringCache struct {
-	s    string
-	flag bool
-	sync.RWMutex
-}
-
-func (sc *stringCache) Get() (string, bool) {
-	sc.RLock()
-	defer sc.RUnlock()
-
-	return sc.s, sc.flag
-}
-
-func (sc *stringCache) Set(s string) {
-	sc.Lock()
-	sc.s = s
-	sc.flag = true
-	sc.Unlock()
 }
 
 type responseSuccess struct {
@@ -106,8 +85,6 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 
-	containerCache := stringCache{}
-	podCache := stringCache{}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		reqBody := []byte{}
@@ -254,29 +231,23 @@ func main() {
 	})
 
 	mux.HandleFunc("/pod_id", func(w http.ResponseWriter, r *http.Request) {
-		pid, exists := podCache.Get()
-		if !exists {
-			var err error
-			pid, err = podid.Get()
-			if err != nil {
-				respErr := responseError{Errors: errs{Message: err.Error()}}
-				b, marshalErr := json.Marshal(respErr)
-				if marshalErr != nil {
-					http.Error(w, marshalErr.Error(), http.StatusInternalServerError)
-					return
-				}
-
-				w.Header().Set(headerContentType, contentTypeJSON)
-				status := http.StatusInternalServerError
-				if errors.Is(err, podid.ErrPodIDNotFound) {
-					status = http.StatusNotFound
-				}
-				w.WriteHeader(status)
-				w.Write(b)
+		pid, err := podid.Get()
+		if err != nil {
+			respErr := responseError{Errors: errs{Message: err.Error()}}
+			b, marshalErr := json.Marshal(respErr)
+			if marshalErr != nil {
+				http.Error(w, marshalErr.Error(), http.StatusInternalServerError)
 				return
 			}
 
-			podCache.Set(pid)
+			w.Header().Set(headerContentType, contentTypeJSON)
+			status := http.StatusInternalServerError
+			if errors.Is(err, podid.ErrPodIDNotFound) {
+				status = http.StatusNotFound
+			}
+			w.WriteHeader(status)
+			w.Write(b)
+			return
 		}
 
 		b, err := json.Marshal(responseSuccess{Data: pid})
@@ -290,23 +261,17 @@ func main() {
 	})
 
 	mux.HandleFunc("/container_id", func(w http.ResponseWriter, r *http.Request) {
-		containerID, exists := containerCache.Get()
-		if !exists {
-			var err error
-			containerID, err = getConatinerID()
+		containerID, err := getConatinerID()
+		if err != nil {
+			b, err := json.Marshal(responseError{Errors: errs{Message: err.Error()}})
 			if err != nil {
-				b, err := json.Marshal(responseError{Errors: errs{Message: err.Error()}})
-				if err != nil {
-					http.Error(w, err.Error(), http.StatusInternalServerError)
-					return
-				}
-
-				w.Header().Set(headerContentType, contentTypeJSON)
-				w.Write(b)
+				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
 
-			containerCache.Set(containerID)
+			w.Header().Set(headerContentType, contentTypeJSON)
+			w.Write(b)
+			return
 		}
 
 		b, err := json.Marshal(responseSuccess{Data: containerID})
