@@ -17,6 +17,8 @@ var (
 	cachedID string
 	hasID    bool
 	mu       sync.RWMutex
+
+	getFunc = get
 )
 
 const (
@@ -38,7 +40,7 @@ func Get() (string, error) {
 	}
 	mu.RUnlock()
 
-	id, err := get()
+	id, err := getFunc()
 	if err != nil {
 		return "", err
 	}
