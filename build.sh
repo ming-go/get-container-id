@@ -49,7 +49,7 @@ docker run --rm \
 
 cd "$BUILD_PATH"
 
-IMAGE_NAME="iwdmb/get-container-id:$BUILD_TAG"
+IMAGE_NAME="get-container-id:$BUILD_TAG"
 echo "Docker Image:     $IMAGE_NAME"
 
 # 2) build docker image (try buildx for cross-platform)
