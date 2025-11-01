@@ -6,7 +6,7 @@ import (
 	"errors"
 	"flag"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/ming-go/lab/get-container-id/containerid"
-	"go.uber.org/zap"
 )
 
 var replacer = strings.NewReplacer("\n", "")
@@ -97,12 +96,8 @@ func main() {
 	flag.StringVar(&httpPort, "httpPort", "8787", "-httpPort 8787")
 	flag.Parse()
 
-	logger, err := zap.NewProduction()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	zap.ReplaceGlobals(logger)
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	slog.SetDefault(logger)
 
 	sc := stringCache{}
 	mux := http.NewServeMux()
@@ -113,17 +108,16 @@ func main() {
 		}
 		r.Body = io.NopCloser(bytes.NewBuffer(reqBody)) // Reset
 
-		zapFields := []zap.Field{}
-		zapFields = append(zapFields, zap.String("Request Method", r.Method))
-		zapFields = append(zapFields, zap.String("Request URL", getRequestURL(r)))
-		zapFields = append(zapFields, zap.String("Request URL Path", r.URL.Path))
-		zapFields = append(zapFields, zap.String("Request Protocol", r.Proto))
-		zapFields = append(zapFields, zap.Any("Request Header", r.Header))
-		zapFields = append(zapFields, zap.Any("Remote Address", r.RemoteAddr))
-
-		zapFields = append(zapFields, zap.ByteString("Request Body", reqBody))
-
-		zap.L().Info("IncomeLog", zapFields...)
+		logger.Info(
+			"IncomeLog",
+			slog.String("request_method", r.Method),
+			slog.String("request_url", getRequestURL(r)),
+			slog.String("request_url_path", r.URL.Path),
+			slog.String("request_protocol", r.Proto),
+			slog.Any("request_header", r.Header),
+			slog.String("remote_address", r.RemoteAddr),
+			slog.Any("request_body", reqBody),
+		)
 
 		if r.URL.Path != "/" {
 			http.NotFound(w, r)
@@ -210,26 +204,30 @@ func main() {
 		for {
 			currCount := atomic.LoadUint64(&counter)
 			if currCount != 0 {
-				zap.L().Info(
+				logger.Info(
 					"CounterLogger",
-					zap.Uint64("Counter", atomic.LoadUint64(&counter)),
+					slog.Uint64("counter", currCount),
 				)
 			}
 
-			atomic.CompareAndSwapUint64(&counter, counter, 0)
+			atomic.CompareAndSwapUint64(&counter, currCount, 0)
 			<-time.After(1 * time.Second)
 		}
 	}()
 
 	listener, err := net.Listen("tcp", ":"+httpPort)
 	if err != nil {
-		log.Fatal(err)
+		logger.Error("failed to create listener", slog.String("port", httpPort), slog.Any("error", err))
+		os.Exit(1)
 	}
 
 	httpServer := &http.Server{
 		Handler: mux,
 	}
 
-	log.Println("http server started on :" + httpPort)
-	httpServer.Serve(listener)
+	logger.Info("http server started", slog.String("port", httpPort))
+
+	if err := httpServer.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		logger.Error("http server stopped with error", slog.Any("error", err))
+	}
 }
