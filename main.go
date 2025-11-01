@@ -86,6 +86,7 @@ var httpPort = "8080"
 const (
 	headerContentType = "Content-Type"
 	contentTypeJSON   = "application/json"
+	maxBodySize       = 1 << 20 // 1MB
 )
 
 func getRequestURL(r *http.Request) string {
@@ -140,6 +141,29 @@ func main() {
 	})
 
 	var counter uint64
+
+	mux.HandleFunc("/echo", func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(http.MaxBytesReader(w, r.Body, maxBodySize))
+		_ = r.Body.Close()
+
+		resp := map[string]any{
+			"method": r.Method,
+			"path":   r.URL.Path,
+			"query":  r.URL.RawQuery,
+			"header": r.Header,
+			"host":   r.Host,
+			"remote": r.RemoteAddr,
+			"body":   string(body),
+		}
+
+		b, err := json.Marshal(responseSuccess{Data: resp})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.Write(b)
+	})
 
 	mux.HandleFunc("/time", func(w http.ResponseWriter, r *http.Request) {
 		b, err := json.Marshal(responseSuccess{Data: time.Now().Format(time.RFC3339)})
