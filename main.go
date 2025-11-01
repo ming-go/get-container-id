@@ -81,7 +81,7 @@ type responseError struct {
 	Errors errs `json:"errors"`
 }
 
-var httpPort = "8787"
+var httpPort = "8080"
 
 func getRequestURL(r *http.Request) string {
 	scheme := "http://"
@@ -93,7 +93,7 @@ func getRequestURL(r *http.Request) string {
 }
 
 func main() {
-	flag.StringVar(&httpPort, "httpPort", "8787", "-httpPort 8787")
+	flag.StringVar(&httpPort, "httpPort", "8080", "-httpPort 8080")
 	flag.Parse()
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
