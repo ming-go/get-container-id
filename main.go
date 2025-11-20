@@ -25,7 +25,7 @@ var replacer = strings.NewReplacer("\n", "")
 var ErrContainerIDNotFound = errors.New("container ID not found")
 var containerIDRegex = regexp.MustCompile(`[0-9a-f]{64}`)
 
-func getConatinerID() (string, error) {
+func getContainerID() (string, error) {
 	b, err := os.ReadFile("/proc/self/cpuset")
 	if err != nil {
 		return "", err
@@ -89,7 +89,12 @@ func main() {
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		reqBody := []byte{}
 		if r.Body != nil { // Read
-			reqBody, _ = io.ReadAll(r.Body)
+			var err error
+			reqBody, err = io.ReadAll(r.Body)
+			if err != nil {
+				http.Error(w, "failed to read request body", http.StatusBadRequest)
+				return
+			}
 		}
 		r.Body = io.NopCloser(bytes.NewBuffer(reqBody)) // Reset
 
@@ -261,15 +266,21 @@ func main() {
 	})
 
 	mux.HandleFunc("/container_id", func(w http.ResponseWriter, r *http.Request) {
-		containerID, err := getConatinerID()
+		containerID, err := getContainerID()
 		if err != nil {
-			b, err := json.Marshal(responseError{Errors: errs{Message: err.Error()}})
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+			respErr := responseError{Errors: errs{Message: err.Error()}}
+			b, marshalErr := json.Marshal(respErr)
+			if marshalErr != nil {
+				http.Error(w, marshalErr.Error(), http.StatusInternalServerError)
 				return
 			}
 
 			w.Header().Set(headerContentType, contentTypeJSON)
+			status := http.StatusInternalServerError
+			if errors.Is(err, ErrContainerIDNotFound) {
+				status = http.StatusNotFound
+			}
+			w.WriteHeader(status)
 			w.Write(b)
 			return
 		}
@@ -306,7 +317,10 @@ func main() {
 	}
 
 	httpServer := &http.Server{
-		Handler: mux,
+		Handler:      mux,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 10 * time.Second,
+		IdleTimeout:  120 * time.Second,
 	}
 
 	logger.Info("http server started", slog.String("port", httpPort))
