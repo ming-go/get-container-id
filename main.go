@@ -78,6 +78,32 @@ func getRequestURL(r *http.Request) string {
 	return scheme + r.Host + r.RequestURI
 }
 
+// writeJSONResponse marshals data to JSON and writes it to the response with the given status code.
+// If marshaling fails, it writes an HTTP 500 error instead.
+func writeJSONResponse(w http.ResponseWriter, data interface{}, statusCode int) {
+	b, err := json.Marshal(data)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set(headerContentType, contentTypeJSON)
+	w.WriteHeader(statusCode)
+	w.Write(b)
+}
+
+// writeJSONSuccess is a convenience wrapper for writeJSONResponse that wraps data in responseSuccess
+// and uses HTTP 200 status code.
+func writeJSONSuccess(w http.ResponseWriter, data interface{}) {
+	writeJSONResponse(w, responseSuccess{Data: data}, http.StatusOK)
+}
+
+// writeJSONError is a convenience wrapper for writeJSONResponse that wraps an error message
+// in responseError and uses the given status code.
+func writeJSONError(w http.ResponseWriter, message string, statusCode int) {
+	writeJSONResponse(w, responseError{Errors: errs{Message: message}}, statusCode)
+}
+
 func main() {
 	flag.StringVar(&httpPort, "httpPort", "8080", "-httpPort 8080")
 	flag.Parse()
@@ -114,14 +140,7 @@ func main() {
 			return
 		}
 
-		b, err := json.Marshal(responseSuccess{Data: "Hello, ming-go!"})
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set(headerContentType, contentTypeJSON)
-		w.Write(b)
+		writeJSONSuccess(w, "Hello, ming-go!")
 	})
 
 	var counter uint64
@@ -140,159 +159,76 @@ func main() {
 			"body":   string(body),
 		}
 
-		b, err := json.Marshal(responseSuccess{Data: resp})
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		w.Write(b)
+		writeJSONSuccess(w, resp)
 	})
 
 	mux.HandleFunc("/hostname", func(w http.ResponseWriter, r *http.Request) {
 		name, err := os.Hostname()
 		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			_ = json.NewEncoder(w).Encode(map[string]string{
-				"error": err.Error(),
-			})
+			writeJSONError(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		b, err := json.Marshal(responseSuccess{Data: name})
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set(headerContentType, contentTypeJSON)
-		w.Write(b)
+		writeJSONSuccess(w, name)
 	})
 
 	mux.HandleFunc("/time", func(w http.ResponseWriter, r *http.Request) {
-		b, err := json.Marshal(responseSuccess{Data: time.Now().Format(time.RFC3339)})
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set(headerContentType, contentTypeJSON)
-		w.Write(b)
+		writeJSONSuccess(w, time.Now().Format(time.RFC3339))
 	})
 
 	mux.HandleFunc("/timestamp", func(w http.ResponseWriter, r *http.Request) {
-		b, err := json.Marshal(responseSuccess{Data: time.Now().Unix()})
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set(headerContentType, contentTypeJSON)
-		w.Write(b)
+		writeJSONSuccess(w, time.Now().Unix())
 	})
 
 	mux.HandleFunc("/timestamp_nano", func(w http.ResponseWriter, r *http.Request) {
-		b, err := json.Marshal(responseSuccess{Data: time.Now().UnixNano()})
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set(headerContentType, contentTypeJSON)
-		w.Write(b)
+		writeJSONSuccess(w, time.Now().UnixNano())
 	})
 
-	http.HandleFunc("/livez", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/livez", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("ok"))
 	})
 
-	http.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("ok"))
 	})
 
 	mux.HandleFunc("/counter", func(w http.ResponseWriter, r *http.Request) {
 		currCount := atomic.AddUint64(&counter, 1)
-		b, err := json.Marshal(responseSuccess{Data: strconv.FormatUint(currCount, 10)})
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set(headerContentType, contentTypeJSON)
-		w.Write(b)
+		writeJSONSuccess(w, strconv.FormatUint(currCount, 10))
 	})
 
 	mux.HandleFunc("/hello", func(w http.ResponseWriter, r *http.Request) {
-		b, err := json.Marshal(responseSuccess{Data: "Hello, world!"})
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set(headerContentType, contentTypeJSON)
-		w.Write(b)
+		writeJSONSuccess(w, "Hello, world!")
 	})
 
 	mux.HandleFunc("/pod_id", func(w http.ResponseWriter, r *http.Request) {
 		pid, err := podid.Get()
 		if err != nil {
-			respErr := responseError{Errors: errs{Message: err.Error()}}
-			b, marshalErr := json.Marshal(respErr)
-			if marshalErr != nil {
-				http.Error(w, marshalErr.Error(), http.StatusInternalServerError)
-				return
-			}
-
-			w.Header().Set(headerContentType, contentTypeJSON)
 			status := http.StatusInternalServerError
 			if errors.Is(err, podid.ErrPodIDNotFound) {
 				status = http.StatusNotFound
 			}
-			w.WriteHeader(status)
-			w.Write(b)
+			writeJSONError(w, err.Error(), status)
 			return
 		}
 
-		b, err := json.Marshal(responseSuccess{Data: pid})
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set(headerContentType, contentTypeJSON)
-		w.Write(b)
+		writeJSONSuccess(w, pid)
 	})
 
 	mux.HandleFunc("/container_id", func(w http.ResponseWriter, r *http.Request) {
 		containerID, err := getContainerID()
 		if err != nil {
-			respErr := responseError{Errors: errs{Message: err.Error()}}
-			b, marshalErr := json.Marshal(respErr)
-			if marshalErr != nil {
-				http.Error(w, marshalErr.Error(), http.StatusInternalServerError)
-				return
-			}
-
-			w.Header().Set(headerContentType, contentTypeJSON)
 			status := http.StatusInternalServerError
 			if errors.Is(err, ErrContainerIDNotFound) {
 				status = http.StatusNotFound
 			}
-			w.WriteHeader(status)
-			w.Write(b)
+			writeJSONError(w, err.Error(), status)
 			return
 		}
 
-		b, err := json.Marshal(responseSuccess{Data: containerID})
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set(headerContentType, contentTypeJSON)
-		w.Write(b)
+		writeJSONSuccess(w, containerID)
 	})
 
 	go func() {
